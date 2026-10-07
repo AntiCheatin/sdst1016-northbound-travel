@@ -1,14 +1,20 @@
 # SDST1016 Group 3 正式分析结果（2026-10-07）
 
-题目：Same Crowd, Longer Stay: How Long Weekends Change Hong Kong Residents' Northbound Travel (2024–2025)
+题目：Weekend Habit or Holiday Trip? Hong Kong Residents' Northbound Travel on Ordinary and Long Weekends, 2024 to 2025
+中文：周末习惯还是假期旅游？从普通周末与长周末的出行结构看港人北上（2024 至 2025）
 复现：在本目录跑 `uv run --with pandas --with scipy --with matplotlib --with statsmodels scripts/analysis.py`，约 10 秒。所有数字出自 `data/processed/`，图在 `figures/`。
 数据下载于 2026-10-07：入境处每日数据到 2026-10-06，1823 假期日历覆盖 2025–2027，2024 年假期按 GovHK 网页手工录入。
 
 ## 一句话结论
 
-长周末北上的不是更多人，而是同样多的人留下过夜。长周末期间同时身在内地的港人峰值是普通周末的 2.85 倍，但每天过关出境的人数几乎一样（1.02 倍）。他们也走得更远，坐高铁的比例明显更高。
+北上的底色是周末习惯，长周末把这个习惯拉长成了假期旅游。每周六约 34 万港人出境，大多第二天就回来。长周末每天出境的人数没有显著更多，但同一时刻身在内地的港人峰值是普通周末的 2.85 倍（p = 0.0002），坐高铁走远的比例也明显更高。
 
-English, for slides: *Long weekends don't send more Hong Kongers north. They make the same people stay longer and travel further.*
+两个词的操作定义（问题定义里要写清楚，数据没有出行目的，只能看行为结构）：
+- 周末习惯：每周固定节奏，即日来回，同一时刻在内地的人到周日回落到 0
+- 假期旅游：过夜，峰值抬高；走得更远，高铁和大桥占比上升
+
+English, for slides and report:
+> Northbound travel is mainly a weekend habit. Every Saturday about 343,000 residents leave and most return the next day. Long weekends do not bring more travellers each day, as daily departures are not significantly higher. Instead the same habit stretches into a holiday trip. The peak number of residents in the Mainland at the same time rises 2.85 times, with p = 0.0002, and more people take the high speed rail further inland.
 
 ## 定义（和 v2 文档一致，组里没改就照用）
 
@@ -25,9 +31,11 @@ English, for slides: *Long weekends don't send more Hong Kongers north. They mak
 | 假期内日均出境 | 294,839 | 288,538 | 1.02 | 倍数 bootstrap 0.94–1.10 | 0.49 | 0.32 |
 | 第一天出境 | 406,852 | 338,477 | 1.20 | | 1.94 | 0.04 |
 | 最后一天回港 | 409,947 | 354,262 | 1.16 | | 3.23 | 0.004 |
+| 公众假期当天出境（34 天，对普通周末日均） | 274,781 | 288,538 | 0.95 | | | 0.75（双侧 0.50） |
 
 - **拒绝 H₀。** Cohen's d ≈ 4.0，效应极大。不假设正态的 Mann-Whitney U 检验结果相同（p < 0.0001）。
-- 日均出境无法拒绝 H₀。这不能证明两者完全相等，但置信区间很窄（±6%），可以说差别很小。
+- 日均出境无法拒绝 H₀，**但不显著不等于相等**。差值的 90% CI 是 −5.8% 到 +10.2%。等价性检验（TOST）以 ±10% 为界 p = 0.053，以 ±5% 为界 p = 0.27，都没过 0.05。所以只能说「没有显著更多，数据排除了多出一成以上」，不能说「一样多」。结果在 `data/processed/tost_daily_dep.csv`。
+- 公众假期当天的出境反而低 4.8%（不显著）。原因是 34 天里有 11 个工作日单日假期（日均约 21.7 万，只放一天很少人北上）和农历新年（约 23 万）。这个检验回答的是「放假当天出去的人多不多」，不是主问题，放在 Results 里当配套证据：放假不等于更多人北上。
 - 首尾两天比普通周末挤 15% 到 20%，口岸压力集中在这两天。
 
 ## 2. 敏感性检验：换口径，结论都不变

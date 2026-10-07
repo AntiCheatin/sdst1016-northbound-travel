@@ -1,8 +1,8 @@
-# Same Crowd, Longer Stay
+# Weekend Habit or Holiday Trip?
 
-How long weekends change Hong Kong residents' northbound travel, 2024–2025. SDST1016 group project, Group 3.
+Hong Kong residents' northbound travel on ordinary and long weekends, 2024 to 2025. SDST1016 group project, Group 3.
 
-**Finding:** on long weekends (3+ days off), the peak number of Hong Kong residents in the Mainland at the same time is 2.85 times that of an ordinary weekend (Welch t = 5.52, one-sided p = 0.0002), while daily departures are about the same (×1.02, p = 0.32). The result holds under five robustness checks and on out-of-sample 2026 data. Long weekends also raise the high-speed rail share of departures from 7.6% to 10.5%.
+**Finding:** northbound travel is mainly a weekend habit, and long weekends stretch it into a holiday trip. On long weekends (3+ days off), the peak number of Hong Kong residents in the Mainland at the same time is 2.85 times that of an ordinary weekend (Welch t = 5.52, one-sided p = 0.0002). Daily departures are not significantly higher (×1.02, p = 0.32; 90% CI of the difference −5.8% to +10.2%), and on public holidays themselves they are 4.8% lower (p = 0.50). Long weekends also raise the high-speed rail share of departures from 7.6% to 10.5%. The main result holds under five robustness checks and on out-of-sample 2026 data.
 
 Full write-up (Chinese): [RESULTS.md](RESULTS.md).
 

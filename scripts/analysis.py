@@ -1,4 +1,4 @@
-"""SDST1016 Group 3: Long weekends vs ordinary weekends, HK residents' northbound travel.
+"""SDST1016 Group 3: Weekend Habit or Holiday Trip? HK residents' northbound travel on ordinary and long weekends.
 
 Run from courses/SDST1016/project/:
     uv run --with pandas --with scipy --with matplotlib --with statsmodels scripts/analysis.py
@@ -156,6 +156,19 @@ def welch(a, b, alternative="greater"):
                 t=t, df=dfw, p_one_sided=p if alternative == "greater" else np.nan,
                 p_two_sided=stats.ttest_ind(a, b, equal_var=False).pvalue,
                 cohens_d=diff / pooled, mannwhitney_p=mw.pvalue)
+
+
+def tost(a, b, margin_pct):
+    """Two one-sided tests: is the difference in means within +/- margin_pct of mean(b)?"""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    va, vb = a.var(ddof=1) / len(a), b.var(ddof=1) / len(b)
+    se = np.sqrt(va + vb)
+    dfw = (va + vb) ** 2 / (va ** 2 / (len(a) - 1) + vb ** 2 / (len(b) - 1))
+    diff, m = a.mean() - b.mean(), margin_pct * b.mean()
+    p = max(1 - stats.t.cdf((diff + m) / se, dfw), stats.t.cdf((diff - m) / se, dfw))
+    half = stats.t.ppf(0.95, dfw) * se
+    return dict(margin_pct=margin_pct, diff_pct=diff / b.mean(), ci90_low_pct=(diff - half) / b.mean(),
+                ci90_high_pct=(diff + half) / b.mean(), tost_p=p)
 
 
 def bootstrap_ratio(a, b, n=10000, seed=1016):
@@ -419,6 +432,12 @@ def main():
     pooled = pd.concat([main_m, oos])
     Lp, Op = split(pooled)
     results["pooled_2024_2026_peak"] = welch(Lp.peak_net_away, Op.peak_net_away)
+
+    # supporting: departures on each public holiday itself vs ordinary-weekend daily departures
+    ph_days = sorted(d for d in hol if pd.Timestamp(MAIN_START) <= d <= pd.Timestamp(MAIN_END))
+    results["ph_day_dep"] = welch(flows.loc[ph_days, "dep"], O.mean_daily_dep)
+    pd.DataFrame([tost(L.mean_daily_dep, O.mean_daily_dep, m) for m in (0.05, 0.10)]).to_csv(
+        OUT / "tost_daily_dep.csv", index=False)
 
     pm = port_mix(raw, main_m)
     pm.to_csv(OUT / "port_mix.csv", index=False)
