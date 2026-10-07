@@ -1,0 +1,26 @@
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:          peak_net_away   R-squared:                       0.678
+Model:                            OLS   Adj. R-squared:                  0.672
+Method:                 Least Squares   F-statistic:                     21.74
+Date:                Wed, 07 Oct 2026   Prob (F-statistic):           1.08e-08
+Time:                        13:34:43   Log-Likelihood:                -1409.1
+No. Observations:                 114   AIC:                             2824.
+Df Residuals:                     111   BIC:                             2832.
+Df Model:                           2                                         
+Covariance Type:                  HC1                                         
+================================================================================
+                   coef    std err          z      P>|z|      [0.025      0.975]
+--------------------------------------------------------------------------------
+Intercept    -1.382e+05   4.13e+04     -3.346      0.001   -2.19e+05   -5.73e+04
+year[T.2025]  2.396e+04   1.06e+04      2.254      0.024    3123.623    4.48e+04
+length        1.353e+05   2.06e+04      6.555      0.000    9.48e+04    1.76e+05
+==============================================================================
+Omnibus:                       20.772   Durbin-Watson:                   2.127
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):              118.376
+Skew:                          -0.155   Prob(JB):                     1.97e-26
+Kurtosis:                       7.982   Cond. No.                         9.65
+==============================================================================
+
+Notes:
+[1] Standard Errors are heteroscedasticity robust (HC1)
