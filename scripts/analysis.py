@@ -10,6 +10,13 @@ Inputs (data/):
 Outputs:
     data/processed/*.csv    daily series, break table, test results
     figures/*.png           charts for slides and report
+
+What the main metric is (and is not):
+    peak_net_outflow = for one break, start on the day before it, add (departures - arrivals)
+    of HK residents through the 7 land checkpoints day by day, and take the maximum running total.
+    It is a cumulative net FLOW relative to a zero baseline on the eve. It is not a stock of people
+    in the Mainland: the starting stock is unknown, the 7 checkpoints are not a closed system, and
+    the data count crossings, not individuals. It can be negative.
 """
 import json
 from pathlib import Path
@@ -31,8 +38,8 @@ LAND_SZ = ["Lo Wu", "Lok Ma Chau Spur Line", "Lok Ma Chau", "Shenzhen Bay",
            "Man Kam To", "Heung Yuen Wai", "Express Rail Link West Kowloon"]
 HZMB = "Hong Kong-Zhuhai-Macao Bridge"
 
-MAIN_START, MAIN_END = "2024-01-01", "2025-12-31"   # registered study period
-OOS_START, OOS_END = "2026-01-01", "2026-10-06"     # out-of-sample check
+MAIN_START, MAIN_END = "2024-01-01", "2025-12-31"   # study period fixed in the 2026-09-21 design note, before any test was run
+OOS_START, OOS_END = "2026-01-01", "2026-10-06"     # later-period check (data to 2026-10-06); not a pre-registered hold-out
 
 HOLIDAYS_2024 = {
     "2024-01-01": "The first day of January", "2024-02-10": "Lunar New Year's Day",
@@ -123,13 +130,19 @@ def break_metrics(br, flows):
         eve = b.start - pd.Timedelta(days=1)
         win = pd.date_range(eve, b.end)
         if win[0] < flows.index.min() or win[-1] > flows.index.max():
-            out.append(dict(peak_net_away=np.nan)); continue
+            out.append(dict(peak_net_outflow=np.nan)); continue
         cum = flows.loc[win, "net"].cumsum()
+        # equal-length windows, so long and ordinary breaks get the same number of days to peak:
+        # eq3 = eve + first two days off (the whole window of an ordinary weekend), eq2 = eve + first day
+        eq3 = cum.iloc[:3].max()
+        eq2 = cum.iloc[:2].max()
         inside = pd.date_range(b.start, b.end)
         # day after the break: residents coming home, used for the return-day comparison
         after = b.end + pd.Timedelta(days=1)
         out.append(dict(
-            peak_net_away=cum.max(),
+            peak_net_outflow=cum.max(),
+            peak_eq3=eq3,
+            peak_eq2=eq2,
             peak_day_offset=int(np.argmax(cum.values)),   # 0 = eve, 1 = first day off
             mean_daily_dep=flows.loc[inside, "dep"].mean(),
             total_dep=flows.loc[inside, "dep"].sum(),
@@ -151,7 +164,7 @@ def welch(a, b, alternative="greater"):
     half = stats.t.ppf(0.975, dfw) * np.sqrt(va + vb)
     pooled = np.sqrt(((len(a) - 1) * a.var(ddof=1) + (len(b) - 1) * b.var(ddof=1)) / (len(a) + len(b) - 2))
     mw = stats.mannwhitneyu(a, b, alternative=alternative)
-    return dict(n_long=len(a), n_ord=len(b), mean_long=a.mean(), mean_ord=b.mean(),
+    return dict(alternative=alternative, n_long=len(a), n_ord=len(b), mean_long=a.mean(), mean_ord=b.mean(),
                 ratio=a.mean() / b.mean(), diff=diff, ci95_low=diff - half, ci95_high=diff + half,
                 t=t, df=dfw, p_one_sided=p if alternative == "greater" else np.nan,
                 p_two_sided=stats.ttest_ind(a, b, equal_var=False).pvalue,
@@ -225,7 +238,7 @@ def fig_weekly_rhythm(flows):
     ax.set_ylim(0, 420000)
     ax.set_ylabel("HK residents per day (median)")
     ax.legend(frameon=False, loc="upper left")
-    title(ax, "Going north is already a weekly routine",
+    title(ax, "A strong weekly rhythm in border crossings",
           "HK residents via the 7 land control points, median by day of week, 2024–2025")
     fig.savefig(FIG / "01_weekly_rhythm.png"); plt.close(fig)
 
@@ -248,21 +261,21 @@ def fig_cumulative_curves(m, flows):
         y = flows.loc[win, "net"].cumsum().values
         ax.plot(np.arange(len(y)), y, color=BLUE, lw=1.6, alpha=0.75,
                 label="Long weekend (one line each)" if i == 0 else None)
-    top = longs.sort_values("peak_net_away").iloc[-1]
-    ax.annotate(f"{short_name(top.holidays)} {top.start:%Y}: {K(top.peak_net_away)} away at peak",
-                (top.peak_day_offset, top.peak_net_away), xytext=(-10, 6), textcoords="offset points",
+    top = longs.sort_values("peak_net_outflow").iloc[-1]
+    ax.annotate(f"{short_name(top.holidays)} {top.start:%Y}: peak net outflow {K(top.peak_net_outflow)}",
+                (top.peak_day_offset, top.peak_net_outflow), xytext=(-10, 6), textcoords="offset points",
                 color=INK, fontsize=10.5, ha="right", va="bottom")
-    ax.set_ylim(None, top.peak_net_away * 1.12)
+    ax.set_ylim(None, top.peak_net_outflow * 1.12)
     ax.axhline(0, color=MUTED, lw=1)
     maxlen = int(longs.length.max()) + 2
     ax.set_xticks(range(maxlen), ["Eve"] + [f"Day {i}" for i in range(1, maxlen)])
     ax.set_xlim(-0.2, maxlen - 0.8)
     ax.yaxis.set_major_formatter(K)
-    ax.set_ylabel("HK residents still in the Mainland\n(cumulative departures − arrivals)")
+    ax.set_ylabel("Cumulative net outflow since the eve\n(departures − arrivals, HK residents)")
     ax.legend(frameon=False, loc="upper right")
-    title(ax, "On long weekends, people stay over instead of coming back the same day",
-          "Running total of HK residents away, from the day before the break until the day after, 2024–2025")
-    fig.savefig(FIG / "02_cumulative_away.png"); plt.close(fig)
+    title(ax, "On long weekends the net outflow keeps building instead of unwinding by Sunday",
+          "Cumulative departures minus arrivals of HK residents, 7 land checkpoints, eve to the day after, 2024–2025")
+    fig.savefig(FIG / "02_cumulative_net_outflow.png"); plt.close(fig)
 
 
 def fig_peak_by_length(m):
@@ -273,7 +286,7 @@ def fig_peak_by_length(m):
     fig, ax = plt.subplots(figsize=(10, 5.4))
     rng = np.random.default_rng(3)
     for i, g in enumerate(order):
-        v = d[d.grp == g].peak_net_away.values
+        v = d[d.grp == g].peak_net_outflow.values
         color = BLUE if g >= 3 else GRAY
         ax.scatter(i + rng.uniform(-0.12, 0.12, len(v)), v, s=46, color=color, alpha=0.8,
                    edgecolor="#fcfcfb", linewidth=1.2, zorder=3)
@@ -284,16 +297,16 @@ def fig_peak_by_length(m):
     ax.set_xlim(-0.5, len(order) - 0.2)
     ax.yaxis.set_major_formatter(K)
     ax.axhline(0, color=MUTED, lw=1)
-    ax.set_ylabel("Peak HK residents away at once")
-    title(ax, "Every extra day off adds more people staying north",
-          "Peak number of HK residents in the Mainland at the same time, by length of break, 2024–2025 (bar = mean)")
+    ax.set_ylabel("Peak cumulative net outflow")
+    title(ax, "Longer breaks show a larger peak net outflow",
+          "Peak cumulative net outflow of HK residents, 7 land checkpoints, by length of break, 2024–2025 (bar = mean)")
     fig.savefig(FIG / "03_peak_by_length.png"); plt.close(fig)
 
 
 def fig_peak_vs_daily(res_peak, res_daily, ci_peak, ci_daily):
     fig, ax = plt.subplots(figsize=(10, 4.2))
     rows = [("Daily departures during the break", res_daily, ci_daily),
-            ("Peak residents away at once", res_peak, ci_peak)]
+            ("Peak cumulative net outflow", res_peak, ci_peak)]
     for i, (lab, r, ci) in enumerate(rows):
         color = BLUE if r["p_one_sided"] < 0.05 else GRAY
         ax.hlines(i, ci[0], ci[1], color=color, lw=3, alpha=0.5)
@@ -307,7 +320,7 @@ def fig_peak_vs_daily(res_peak, res_daily, ci_peak, ci_daily):
     ax.set_xlim(0.6, max(ci_peak[1], 3.5) + 1.2)
     ax.set_xlabel("Long weekend ÷ ordinary weekend (dot = ratio of means, line = 95% bootstrap CI)")
     ax.grid(axis="y", visible=False)
-    title(ax, "Not more people going, but more people staying",
+    title(ax, "A larger peak net outflow, without significantly more daily departures",
           "Long weekends vs ordinary weekends, HK residents via the 7 land control points, 2024–2025")
     fig.savefig(FIG / "04_peak_vs_daily.png"); plt.close(fig)
 
@@ -322,7 +335,7 @@ def fig_timeline(flows, m):
         ax.axvspan(b.start, b.end + pd.Timedelta(days=1), color=BLUE, alpha=0.18, lw=0,
                    label="Long weekend" if i == 0 else None)
     ax.axvline(pd.Timestamp(OOS_START), color=MUTED, lw=1, ls="--")
-    ax.text(pd.Timestamp(OOS_START), ax.get_ylim()[1] * 0.98, "  2026: out-of-sample check", color=INK2, fontsize=10, va="top")
+    ax.text(pd.Timestamp(OOS_START), ax.get_ylim()[1] * 0.98, "  2026: later-period check", color=INK2, fontsize=10, va="top")
     ax.yaxis.set_major_formatter(K)
     ax.set_ylim(0, None)
     ax.set_ylabel("HK residents leaving per day")
@@ -386,7 +399,7 @@ def fig_port_mix(pm):
     ax.set_xlabel("Share of HK-resident departures (eve to last day off)")
     ax.grid(axis="y", visible=False)
     ax.legend(frameon=False, loc="lower right")
-    title(ax, "Long weekends send people further: the high-speed rail share jumps",
+    title(ax, "On long weekends the checkpoint mix shifts toward the high-speed rail",
           "Mix of the 7 land control points, mean over breaks, 2024–2025")
     fig.savefig(FIG / "06_port_mix.png"); plt.close(fig)
 
@@ -412,30 +425,39 @@ def main():
 
     results = {}
     L, O = split(main_m)
-    results["main_peak"] = welch(L.peak_net_away, O.peak_net_away)
+    results["main_peak"] = welch(L.peak_net_outflow, O.peak_net_outflow)
     results["main_daily_dep"] = welch(L.mean_daily_dep, O.mean_daily_dep)
     results["main_last_day_arr"] = welch(L.last_day_arr, O.last_day_arr)
     results["main_first_day_dep"] = welch(L.first_day_dep, O.first_day_dep)
     # sensitivity
-    results["sens_clean_ordinary"] = welch(L.peak_net_away, O[O.clean].peak_net_away)
+    results["sens_clean_ordinary"] = welch(L.peak_net_outflow, O[O.clean].peak_net_outflow)
     results["sens_clean_daily_dep"] = welch(L.mean_daily_dep, O[O.clean].mean_daily_dep)
-    results["sens_no_lny"] = welch(L[~L.lny].peak_net_away, O.peak_net_away)
-    results["sens_ordinary_incl_ph"] = welch(L.peak_net_away, main_m[main_m.kind.isin(["ordinary", "ordinary_ph"])].peak_net_away)
+    results["sens_no_lny"] = welch(L[~L.lny].peak_net_outflow, O.peak_net_outflow)
+    results["sens_ordinary_incl_ph"] = welch(L.peak_net_outflow, main_m[main_m.kind.isin(["ordinary", "ordinary_ph"])].peak_net_outflow)
     mh = m_h.loc[main_m.index]
     Lh, Oh = split(mh)
-    results["sens_with_hzmb"] = welch(Lh.peak_net_away, Oh.peak_net_away)
+    results["sens_with_hzmb"] = welch(Lh.peak_net_outflow, Oh.peak_net_outflow)
     oos = m[(m.start >= OOS_START) & (m.end < pd.Timestamp(OOS_END))]
     Lo, Oo = split(oos)
     if len(Lo) >= 2:
-        results["oos_2026_peak"] = welch(Lo.peak_net_away, Oo.peak_net_away)
+        results["oos_2026_peak"] = welch(Lo.peak_net_outflow, Oo.peak_net_outflow)
         results["oos_2026_daily_dep"] = welch(Lo.mean_daily_dep, Oo.mean_daily_dep)
     pooled = pd.concat([main_m, oos])
     Lp, Op = split(pooled)
-    results["pooled_2024_2026_peak"] = welch(Lp.peak_net_away, Op.peak_net_away)
+    results["pooled_2024_2026_peak"] = welch(Lp.peak_net_outflow, Op.peak_net_outflow)
 
-    # supporting: departures on each public holiday itself vs ordinary-weekend daily departures
+    # exploratory: departures on each public holiday (34 days) vs each ordinary-weekend day (186 days),
+    # same unit on both sides, two-sided because no direction was hypothesised
     ph_days = sorted(d for d in hol if pd.Timestamp(MAIN_START) <= d <= pd.Timestamp(MAIN_END))
-    results["ph_day_dep"] = welch(flows.loc[ph_days, "dep"], O.mean_daily_dep)
+    wkd_days = [d for _, b in O.iterrows() for d in pd.date_range(b.start, b.end)]
+    results["ph_day_dep"] = welch(flows.loc[ph_days, "dep"], flows.loc[wkd_days, "dep"], alternative="two-sided")
+    # equal-window sensitivity for the main metric
+    results["sens_equal_window_3d"] = welch(L.peak_eq3, O.peak_eq3)
+    results["sens_equal_window_2d"] = welch(L.peak_eq2, O.peak_eq2)
+    # independence check: serial correlation of consecutive ordinary weekends
+    lag1 = O.sort_values("start").peak_net_outflow.reset_index(drop=True).autocorr(1)
+    with open(OUT / "independence.txt", "w") as f:
+        f.write(f"lag-1 autocorrelation of peak net outflow across consecutive ordinary weekends: {lag1:.3f}\n")
     pd.DataFrame([tost(L.mean_daily_dep, O.mean_daily_dep, m) for m in (0.05, 0.10)]).to_csv(
         OUT / "tost_daily_dep.csv", index=False)
 
@@ -448,13 +470,13 @@ def main():
     res = pd.DataFrame(results).T
     res.to_csv(OUT / "tests.csv")
 
-    ci_peak = bootstrap_ratio(L.peak_net_away, O.peak_net_away)
+    ci_peak = bootstrap_ratio(L.peak_net_outflow, O.peak_net_outflow)
     ci_daily = bootstrap_ratio(L.mean_daily_dep, O.mean_daily_dep)
 
     # dose-response: peak ~ length, weekend-type breaks only (start on Fri/Sat/Sun or include a weekend)
     reg_df = main_m[main_m.kind.isin(["single", "ordinary", "long"])].copy()
     reg_df["year"] = reg_df.start.dt.year.astype(str)
-    reg = smf.ols("peak_net_away ~ length + year", data=reg_df).fit(cov_type="HC1")
+    reg = smf.ols("peak_net_outflow ~ length + year", data=reg_df).fit(cov_type="HC1")
     with open(OUT / "regression_peak_on_length.txt", "w") as f:
         f.write(reg.summary().as_text())
 
@@ -462,8 +484,8 @@ def main():
     eve.to_csv(OUT / "eve_effect.csv", index=False)
 
     by_len = main_m[main_m.kind.isin(["single", "ordinary", "long"])].groupby("length").agg(
-        n=("peak_net_away", "size"), peak_mean=("peak_net_away", "mean"),
-        peak_per_day=("peak_net_away", lambda s: s.mean()), daily_dep=("mean_daily_dep", "mean"))
+        n=("peak_net_outflow", "size"), peak_mean=("peak_net_outflow", "mean"),
+        peak_per_day=("peak_net_outflow", lambda s: s.mean()), daily_dep=("mean_daily_dep", "mean"))
     by_len["peak_per_day"] = by_len.peak_mean / by_len.index
     by_len.to_csv(OUT / "by_length.csv")
 
@@ -481,10 +503,10 @@ def main():
 
     pd.set_option("display.width", 200, "display.max_columns", 30)
     print("== long weekends 2024-2025 ==")
-    print(L[["start", "end", "length", "holidays", "lny", "peak_net_away", "peak_day_offset",
+    print(L[["start", "end", "length", "holidays", "lny", "peak_net_outflow", "peak_day_offset",
              "mean_daily_dep", "eve_dep", "eve_dow"]].to_string())
     print("\n== other non-ordinary breaks ==")
-    print(main_m[~main_m.kind.isin(["long", "ordinary"])][["start", "length", "kind", "holidays", "peak_net_away"]].to_string())
+    print(main_m[~main_m.kind.isin(["long", "ordinary"])][["start", "length", "kind", "holidays", "peak_net_outflow"]].to_string())
     print("\n== tests ==")
     print(res[["n_long", "n_ord", "mean_long", "mean_ord", "ratio", "ci95_low", "ci95_high",
                "t", "df", "p_one_sided", "p_two_sided", "cohens_d", "mannwhitney_p"]].round(4).to_string())
@@ -494,9 +516,11 @@ def main():
     print("\n== eve effect ==\n", eve.to_string())
     print("\n== weekday median 2024-25 ==\n", dow.round(0).to_string())
     print("\n== yearly mean dep ==\n", yearly.round(0).to_string())
-    print("\n== 2026 long weekends ==\n", Lo[["start", "length", "holidays", "peak_net_away", "mean_daily_dep"]].to_string() if len(Lo) else "none")
-    print("ordinary peak 2024/2025:", O.groupby(O.start.dt.year).peak_net_away.mean().round(0).to_dict())
+    print("\n== 2026 long weekends ==\n", Lo[["start", "length", "holidays", "peak_net_outflow", "mean_daily_dep"]].to_string() if len(Lo) else "none")
+    print("ordinary peak 2024/2025:", O.groupby(O.start.dt.year).peak_net_outflow.mean().round(0).to_dict())
     print("ordinary peak day offset counts:", O.peak_day_offset.value_counts().to_dict())
+    print("long peak day offset counts:", L.peak_day_offset.value_counts().to_dict())
+    print(open(OUT / "independence.txt").read())
 
 
 if __name__ == "__main__":

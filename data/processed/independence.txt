@@ -1,0 +1,1 @@
+lag-1 autocorrelation of peak net outflow across consecutive ordinary weekends: 0.117
